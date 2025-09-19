@@ -2123,7 +2123,6 @@ def PGWinFoV_Space_NObs(
         "TestTime": TestTime,
         "AvailablePixPerTime": AvailablePixPerTime,
         "ProbaTime": ProbaTime,
-        "Occultedpixels": Occultedpixels,
     }
 
     return SuggestedPointings, result
@@ -2368,14 +2367,13 @@ def PGalinFoV_Space_NObs(
     )
 
     result = {
-        "SatTimes": SatTimes,
-        "saa": saa,
-        "first_values1": first_values1,
-        "first_values": first_values,
-        "TestTime": TestTime,
-        "AvailablePixPerTime": AvailablePixPerTime,
-        "ProbaTime": ProbaTime,
-        "Occultedpixels": Occultedpixels,
+        "SatTimes": SatTimes,  # Time checked concerning sat in SAA
+        "saa": saa,  # Boolean array indicating if sat is in SAA at each time step
+        "first_values1": first_values1,  # Grid of the 90% region without occultation constraints (all)
+        "first_values": first_values,  # Grid of the 90% region that is never occulted
+        "TestTime": TestTime,  # Times at which the satellite position was checked
+        "AvailablePixPerTime": AvailablePixPerTime,  # List of available pixels at each time step
+        "ProbaTime": ProbaTime,  # List of probabilities corresponding to the available pixels at each time step
     }
 
     return SuggestedPointings, result
