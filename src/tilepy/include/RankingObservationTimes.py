@@ -67,8 +67,8 @@ __all__ = [
     "RankingTimes_2D",
     "PlotAccRegionTimePix",
     "PlotAccRegionTimeRadec",
-    "Ranking_Space",
-    "Ranking_Space_AI",
+    "RankingSpace",
+    "RankingSpace_AI",
 ]
 
 
@@ -620,7 +620,7 @@ def RankingTimes_2D(obspar, prob, dirName, PointingFile):
 
 
 # Function to compute 2D distance between two rows
-def distance(entry1, entry2):
+def Distance(entry1, entry2):
     ra1, dec1 = entry1["RA[deg]"], entry1["DEC[deg]"]
     ra2, dec2 = entry2["RA[deg]"], entry2["DEC[deg]"]
 
@@ -633,7 +633,7 @@ def distance(entry1, entry2):
 
 
 # Ranking function
-def Ranking_Space(dirName, PointingFile, obspar, alphaR, betaR, skymap):
+def RankingSpace(dirName, PointingFile, obspar, alphaR, betaR, skymap):
     # Read the data from the pointing file
     file_path = f"{PointingFile}"
     data = pd.read_csv(file_path, delim_whitespace=True)
@@ -653,7 +653,7 @@ def Ranking_Space(dirName, PointingFile, obspar, alphaR, betaR, skymap):
         last_entry = ranked[-1]
 
         # Normalize distance and PGW to 0-1 scale
-        distances = data.apply(lambda row: distance(last_entry, row), axis=1)
+        distances = data.apply(lambda row: Distance(last_entry, row), axis=1)
         pgw_values = data["PGW"] if "PGW" in data.columns else data["PGal"]
 
         max_dist = distances.max()
@@ -797,7 +797,7 @@ def Ranking_Space(dirName, PointingFile, obspar, alphaR, betaR, skymap):
         plt.close()
 
 
-def read_ranked_pointings(file_path):
+def ReadRankedPointings(file_path):
     ranked_pointings = []
     with open(file_path, "r") as file:
         for line in file:
@@ -808,7 +808,7 @@ def read_ranked_pointings(file_path):
     return ranked_pointings
 
 
-def Ranking_Space_AI(dirName, PointingFile, obspar, skymap):
+def RankingSpace_AI(dirName, PointingFile, obspar, skymap):
 
     # Convert to DataFrame for easier handling
     file_path = f"{PointingFile}"
@@ -913,7 +913,7 @@ def Ranking_Space_AI(dirName, PointingFile, obspar, skymap):
         plt.close()
 
 
-def map_pixel_availability(pixels_by_time, probs_by_time, times):
+def MapPixelAvailability(pixels_by_time, probs_by_time, times):
     """
     Map each pixel to a list of available times and a single aggregated probability.
 
@@ -945,11 +945,34 @@ def map_pixel_availability(pixels_by_time, probs_by_time, times):
 
 
 def PlotAccRegionTimePix(dirName, pixels_by_time, ProbaTime, times):
-    path = dirName + "/Occ_Space_Obs"
+    """
+    Plot accessible sky regions as a function of time and pixel index.
+    This function creates a scatter plot of pixel availability over time, where each
+    pixel is represented by its index, and the y-axis is sorted by ascending probability.
+    The resulting plot is saved as ``Acc_Pointing_Times_Pix.png`` in the
+    ``Acc_Space_Obs`` subdirectory of ``dirName``.
+    Parameters
+    ----------
+    dirName : str
+        Base directory where output files will be saved.
+    pixels_by_time : list of list of int
+        List of lists, where each sublist contains pixel indices available at a specific time.
+    ProbaTime : list of list of float
+        List of lists, where each sublist contains probabilities associated with the pixels at a specific time.
+    times : list of datetime
+        List of datetime objects corresponding to each time step.
+    Notes
+    -----
+    - The y-axis is sorted by ascending probability, and labeled with the
+      corresponding pixel index and probability value.
+    - The x-axis shows only the time of day (HH:MM).
+    - The figure is saved and then closed; it is not returned.
+    """
+    path = dirName + "/Acc_Space_Obs"
     if not os.path.exists(path):
         os.mkdir(path, 493)
 
-    pixel_availability = map_pixel_availability(pixels_by_time, ProbaTime, times)
+    pixel_availability = MapPixelAvailability(pixels_by_time, ProbaTime, times)
 
     sorted_pixels = sorted(pixel_availability.items(), key=lambda x: x[1]["prob"])
 
@@ -976,7 +999,6 @@ def PlotAccRegionTimePix(dirName, pixels_by_time, ProbaTime, times):
     )
     plt.xlabel("Time")
     plt.ylabel("Pixels sorted by ascending probability")
-    # plt.title("Pixel Availability with Occulted Regions")
     plt.grid(True)
     plt.tight_layout()
 
@@ -989,11 +1011,40 @@ def PlotAccRegionTimePix(dirName, pixels_by_time, ProbaTime, times):
 
 
 def PlotAccRegionTimeRadec(dirName, pixels_by_time, ProbaTime, times, nside):
-    path = os.path.join(dirName, "Occ_Space_Obs")
+    """
+    Plot accessible sky regions as a function of time and pixel coordinates (RA, Dec).
+
+    This function creates a scatter plot of pixel availability over time, where each
+    pixel is represented by its RA and Dec, and the color coding indicates probability.
+    The resulting plot is saved as ``Acc_Pointing_Times_Radec.png`` in the
+    ``Acc_Space_Obs`` subdirectory of ``dirName``.
+
+    Parameters
+    ----------
+    dirName : str
+        Base directory where output files will be saved.
+    pixels_by_time : list of list of int
+        List of lists, where each sublist contains pixel indices available at a specific time.
+    ProbaTime : list of list of float
+        List of lists, where each sublist contains probabilities associated with the pixels at a specific time.
+    times : list of datetime
+        List of datetime objects corresponding to each time step.
+    nside : int
+        HEALPix nside parameter defining the resolution of the sky map. Used to convert pixel indices to RA and Dec.
+
+    Notes
+    -----
+    - Each HEALPix pixel is converted to RA and Dec coordinates.
+    - The y-axis is sorted by ascending probability, and labeled with the
+      corresponding RA/Dec and probability value.
+    - The x-axis shows only the time of day (HH:MM).
+    - The figure is saved and then closed; it is not returned.
+    """
+    path = os.path.join(dirName, "Acc_Space_Obs")
     os.makedirs(path, mode=0o755, exist_ok=True)
 
     # Map pixel availability with times and probabilities
-    pixel_availability = map_pixel_availability(pixels_by_time, ProbaTime, times)
+    pixel_availability = MapPixelAvailability(pixels_by_time, ProbaTime, times)
     sorted_pixels = sorted(pixel_availability.items(), key=lambda x: x[1]["prob"])
 
     plt.figure(figsize=(10, 6))
@@ -1026,7 +1077,6 @@ def PlotAccRegionTimeRadec(dirName, pixels_by_time, ProbaTime, times, nside):
     plt.yticks(yticks, yticklabels)
     plt.xlabel("Time of Day")
     plt.ylabel("RA, Dec of Pixels (sorted by ascending probability)")
-    # plt.title("Pixel Availability with Occulted Regions")
     plt.grid(True)
     plt.tight_layout()
 

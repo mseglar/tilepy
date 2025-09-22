@@ -29,8 +29,8 @@ from astropy.table import Table
 from .MapManagement import SkyMap, create_map_reader
 from .PointingPlotting import PointingPlotting, PlotAccRegion
 from .RankingObservationTimes import (
-    Ranking_Space,
-    Ranking_Space_AI,
+    RankingSpace,
+    RankingSpace_AI,
     RankingTimes,
     RankingTimes_2D,
     PlotAccRegionTimePix,
@@ -483,7 +483,7 @@ def GetUniversalSchedule(obspar):
                         fast_writer=False,
                     )
                     if obspar[j].doRank:
-                        Ranking_Space(
+                        RankingSpace(
                             dirName,
                             "%s/SuggestedPointings_GWOptimisation_%s.txt"
                             % (dirName, obspar[j].obs_name),
@@ -492,7 +492,7 @@ def GetUniversalSchedule(obspar):
                             obspar[j].betaR,
                             skymap,
                         )
-                        Ranking_Space_AI(
+                        RankingSpace_AI(
                             dirName,
                             "%s/SuggestedPointings_GWOptimisation_%s.txt"
                             % (dirName, obspar[j].obs_name),
