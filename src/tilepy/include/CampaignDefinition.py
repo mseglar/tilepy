@@ -4,6 +4,7 @@ import six
 from astropy import units as u
 from astropy.coordinates import EarthLocation
 from six.moves import configparser
+from astropy.table import Table
 
 if six.PY2:
     ConfigParser = configparser.SafeConfigParser
@@ -422,3 +423,70 @@ class ObservationParameters(object):
         self.reducedNside = reducedNside
         self.HRnside = HRnside
         self.mangrove = mangrove
+
+
+class ResultsCollector:
+    """
+    Collects results generated during the observation planning workflow.
+
+    Hybrid design:
+    - Some fixed attributes (always present).
+    - Links to `ObservationParameters` for configuration context.
+    - Flexible container for optional results.
+    """
+
+    def __init__(self, obspar):
+        from copy import deepcopy
+
+        self.obspar = deepcopy(obspar)  # Deep copy of obspar, mutable
+
+        self.suggestedPointings = None  # always reserved (astropy.table.Table expected)
+        self.observationGrid = None
+
+    # ----- Fixed interface -----
+
+    def set_pointings(self, TableObject: Table):
+        """Set the fixed SuggestedPointings result."""
+        self.suggestedPointings = TableObject
+
+    def set_observation_grid(self, GridObject: dict):
+        """Set the fixed ObservationGrid result."""
+        self.observationGrid = GridObject
+
+    def write_log(self, FilePath: str):
+        """Write a JSON log file summarizing the observation planning results.
+        The log includes observation parameters, suggested pointings, and any additional tables.
+        Parameters
+        ----------
+        FilePath : str
+            Path to the output JSON log file.
+        """
+        import json
+
+        def table_to_list(TableObj):
+            if TableObj is None:
+                return None
+            return [dict(zip(TableObj.colnames, row)) for row in TableObj]
+
+        log_data = {
+            "ObservationParameters": self.ObservationParameters.__dict__,
+            "SuggestedPointings": table_to_list(self.SuggestedPointings),
+            "ObservationGrid": self.observationGrid,
+        }
+
+        with open(FilePath, "w") as f:
+            json.dump(log_data, f, indent=2, default=str)
+        # ----- Print attributes -----
+
+    def info(self):
+        print("=== ObservationParameters ===")
+        for k, v in self.ObservationParameters.__dict__.items():
+            print(f"{k}: {v}")
+        print("\n=== SuggestedPointings ===")
+        print("Set" if self.SuggestedPointings is not None else "None")
+        print("\n=== SatObservationGrid ===")
+        print(
+            f"{list(self.SatObservationGrid.keys())}"
+            if self.SatObservationGrid
+            else "None"
+        )
