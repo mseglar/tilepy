@@ -849,441 +849,6 @@ def PGalinFoV(skymap, nameEvent, galFile, obspar, dirName):
     return obslog
 
 
-def PGWinFoV_Space_NObs(
-    skymap, nameEvent, ObservationTime0, PointingFile, obsparameters, dirName
-):
-    """
-    Compute an observation schedule for space-based observatories using a 3D method.
-
-    It calculates optimal observation times considering the galaxy catalog, GW probability map, and satellite constraints.
-    The function returns suggested pointings along with satellite visibility times and SAA status.
-    """
-
-    random.seed()
-    RAarray = []
-    DECarray = []
-    pixlist = []
-    pixlistHR = []
-    P_GWarray = []
-    ObsName = []
-    Occultedpixels = []
-
-    obspar = obsparameters[0]
-    radius = obspar.FOV
-    HRnside, reducedNside = GetBestNSIDE(obspar.reducedNside, obspar.HRnside, radius)
-    #################################################################################################################################################
-
-    # Retrieve maps
-    prob = skymap.getMap("prob", reducedNside)
-    highres = skymap.getMap("prob", HRnside)
-
-    # Create table for 2D probability at 90% containment
-    rapix, decpix, areapix = Get90RegionPixReduced(
-        prob, obspar.percentageMOC, reducedNside
-    )
-    radecs = co.SkyCoord(rapix, decpix, frame="icrs", unit=(u.deg, u.deg))
-    maxRuns = obspar.maxRuns
-
-    doPlot = obspar.doPlot
-
-    # Add observed pixels to pixlist
-    if PointingFile is not None:
-        print(PointingFile, prob, obspar.reducedNside, obspar.FOV, pixlist)
-        pixlist, pixlistHR, sumPGW, doneObs = SubstractPointings2D(
-            PointingFile, prob, obspar, pixlist, pixlistHR
-        )
-
-        if obspar.countPrevious:
-            maxRuns = obspar.maxRuns - doneObs
-        print(
-            "==========================================================================================="
-        )
-        print()
-        print(f"Total GW probability already covered: {sumPGW}")
-        print(
-            f"Count Previous = {obspar.countPrevious}, Number of pointings already done: {doneObs}, "
-            f"Max Runs was {obspar.maxRuns}, now is {maxRuns}"
-        )
-        print(
-            "==========================================================================================="
-        )
-
-    ipix = TransformRADecToPix(radecs, reducedNside)
-    newpix = ipix
-
-    first_values1 = GetBestGridPos2D(
-        prob,
-        highres,
-        HRnside,
-        reducedNside,
-        newpix,
-        radius,
-        maxRuns,
-        Occultedpixels,
-        doPlot,
-        dirName,
-        obspar.numberSides,
-        pixlistHR,
-        obspar.minProbcut,
-    )
-
-    # FOR SPACE ########################################################
-    # Computing the satellite name
-    SatelliteName = GetSatelliteName(obspar.obs_name, obspar.stationsurl)
-
-    saa = np.empty(obspar.maxRuns + 1, dtype=bool)
-    SatTimes = np.empty(obspar.maxRuns + 1, dtype=bool)
-
-    # Iterate through time steps within the specified duration -> to be modified
-    current_time = ObservationTime0
-    start_time = ObservationTime0
-    step = int(obspar.duration / obspar.maxRuns)
-    step = datetime.timedelta(minutes=step)
-
-    duration = obspar.duration
-
-    SatTimes, saa = SAA_Times(
-        duration,
-        start_time,
-        current_time,
-        SatelliteName,
-        saa,
-        SatTimes,
-        step,
-        doPlot,
-        dirName,
-        obspar.datasetDir,
-        obspar.SAAThreshold,
-    )
-
-    i = 0
-    current_time = ObservationTime0
-    start_time = ObservationTime0
-    AvailablePixPerTime = []
-    TestTime = []
-    RadecsVsTimes = []
-    matching_tables = []
-    ProbaTime = []
-    while current_time <= start_time + datetime.timedelta(minutes=duration):
-        # Need to get a list of highest pixels
-        SatelliteTime = GetSatelliteTime(SatelliteName, current_time)
-        satellitePosition, satelliteLocation = GetSatellitePositions(
-            SatelliteName, SatelliteTime
-        )
-        ObsBool, yprob, pixlistRROcc = OccultationCut(
-            prob,
-            reducedNside,
-            current_time,
-            obspar,
-            satellitePosition,
-            satelliteLocation,
-        )
-
-        # Let's get the list of pixels available at each iteration
-        firstvalue1 = first_values1
-
-        matching_rows1 = FindMatchingCoords(1, firstvalue1, pixlistRROcc, reducedNside)
-        matching_tables.append(matching_rows1)
-
-        radectime = co.SkyCoord(
-            ra=matching_rows1["PIXRA"] * u.deg, dec=matching_rows1["PIXDEC"] * u.deg
-        )
-        pix_idx = TransformRADecToPix(radectime, reducedNside)
-        pix_proba = matching_rows1["PIXFOVPROB"]
-
-        RadecsVsTimes.append(radectime)
-        AvailablePixPerTime.append(pix_idx)
-        TestTime.append(current_time)
-        ProbaTime.append(pix_proba)
-
-        # List of all cculted pixels
-        Occultedpixels.append(pixlistRROcc)
-        current_time += step
-        i += 1
-
-    # WE CAN GET THE LIST OF PIXELS AVAILABLE AT ALL TIMES
-    Occultedpixels = [item for sublist in Occultedpixels for item in sublist]
-    OldPix = ipix
-    searchpix = np.isin(OldPix, Occultedpixels, invert=True)
-    newpix = OldPix[searchpix]
-
-    # Find common pixels
-    first_values = FindMatchingPixList(newpix, first_values1)
-
-    ObsName = [obspar.obs_name for j in range(len(first_values))]
-    RAarray = [row["PIXRA"] for row in first_values]
-    DECarray = [row["PIXDEC"] for row in first_values]
-    P_GWarray = [row["PIXFOVPROB"] for row in first_values]
-
-    SuggestedPointings = Table(
-        [ObsName, RAarray, DECarray, P_GWarray],
-        names=["ObsName", "RA[deg]", "DEC[deg]", "PGW"],
-    )
-
-    result = {
-        "SatTimes": SatTimes,
-        "saa": saa,
-        "first_values1": first_values1,
-        "first_values": first_values,
-        "TestTime": TestTime,
-        "AvailablePixPerTime": AvailablePixPerTime,
-        "ProbaTime": ProbaTime,
-    }
-
-    return SuggestedPointings, result
-
-
-def PGalinFoV_Space_NObs(
-    skymap, nameEvent, ObservationTime0, PointingFile, galFile, obsparameters, dirName
-):
-    """
-    Compute an observation schedule for space-based observatories using a 3D method.
-
-    Called by :func:`tilepy.include.observationschedule.GetSchedule`, this function generates a schedule of pointings for each observatory,
-    considering the field of view (FoV), galaxy catalog, and satellite position with occultation constraints.
-
-    Parameters
-    ----------
-    skymap : SkyMap
-        The object storing sky maps.
-    nameEvent : str
-        The name of the event.
-    ObservationTime0 : datetime
-        The desired start time for scheduling to begin.
-    PointingFile : str, optional
-        Path to the text file containing the pointings that have already been performed.
-    galFile : str
-        Path to the galaxy catalog file.
-    obsparameters : list of ObservationParameters
-        A list of sets of parameters for each observatory needed to launch the tiling scheduler.
-    dirName : str
-        Path to the output directory where the schedules and plots will be saved.
-
-    Returns
-    -------
-    SuggestedPointings : astropy.table.Table
-        Table of suggested pointings with their RA, DEC, and galaxy probability.
-    SatTimes : numpy.ndarray
-        Array of satellite observation times.
-    saa : numpy.ndarray
-        Array indicating the satellite's South Atlantic Anomaly (SAA) status at each time step.
-
-    """
-
-    random.seed()
-    RAarray = []
-    DECarray = []
-    pixlist = []
-    pixlistHR = []
-    ObsName = []
-    Occultedpixels = []
-
-    obspar = obsparameters[0]
-    radius = obspar.FOV
-    HRnside, reducedNside = GetBestNSIDE(obspar.reducedNside, obspar.HRnside, radius)
-    #################################################################################################################################################
-
-    # Retrieve maps
-    prob = skymap.getMap("prob", reducedNside)
-
-    # Create table for 2D probability at 90% containment
-    rapix, decpix, areapix = Get90RegionPixReduced(
-        prob, obspar.percentageMOC, reducedNside
-    )
-    radecs = co.SkyCoord(rapix, decpix, frame="icrs", unit=(u.deg, u.deg))
-    maxRuns = obspar.maxRuns
-
-    doPlot = obspar.doPlot
-
-    # load galaxy catalogue
-    if not obspar.mangrove:
-        cat = LoadGalaxies(galFile)
-    else:
-        cat = LoadGalaxies_SteMgal(galFile)
-
-    # correlate GW map with galaxy catalog, retrieve ordered list
-    if not obspar.mangrove:
-        cat = skymap.computeGalaxyProbability(cat)
-        tGals0 = FilterGalaxies(cat, obspar.minimumProbCutForCatalogue)
-        sum_dP_dV = cat["dp_dV"].sum()
-    else:
-        cat = skymap.computeGalaxyProbability(cat)
-        tGals0 = FilterGalaxies(cat, obspar.minimumProbCutForCatalogue)
-        tGals0 = MangroveGalaxiesProbabilities(tGals0)
-        sum_dP_dV = cat["dp_dV"].sum()
-
-    # Add observed pixels to pixlist
-    if PointingFile is not None:
-        print(PointingFile, prob, reducedNside, radius, pixlist)
-        pixlist, pixlistHR, sumPGW, doneObs = SubstractPointings2D(
-            PointingFile, prob, obspar, pixlist, pixlistHR
-        )
-
-        if obspar.countPrevious:
-            maxRuns = obspar.maxRuns - doneObs
-        print(
-            "==========================================================================================="
-        )
-        print()
-        print(f"Total GW probability already covered: {sumPGW}")
-        print(
-            f"Count Previous = {obspar.countPrevious}, Number of pointings already done: {doneObs}, "
-            f"Max Runs was {obspar.maxRuns}, now is {maxRuns}"
-        )
-        print(
-            "==========================================================================================="
-        )
-
-    ipix = TransformRADecToPix(radecs, reducedNside)
-    newpix = ipix
-    pixradec = radecs
-
-    first_values1 = GetBestGridPos3D(
-        prob,
-        tGals0,
-        pixradec,
-        newpix,
-        radius,
-        sum_dP_dV,
-        HRnside,
-        obspar.numberSides,
-        maxRuns,
-        doPlot,
-        dirName,
-        reducedNside,
-        Occultedpixels,
-        obspar.minProbcut,
-    )
-
-    # FOR SPACE ######################################################
-    # Computing the satellite name
-    SatelliteName = GetSatelliteName(obspar.obs_name, obspar.stationsurl)
-
-    saa = np.empty(obspar.maxRuns + 1, dtype=bool)
-    SatTimes = np.empty(obspar.maxRuns + 1, dtype=bool)
-
-    # Iterate through time steps within the specified duration
-    current_time = ObservationTime0
-    start_time = ObservationTime0
-    step = int(obspar.duration / obspar.maxRuns)
-    step = datetime.timedelta(minutes=step)
-
-    duration = obspar.duration
-
-    SatTimes, saa = SAA_Times(
-        duration,
-        start_time,
-        current_time,
-        SatelliteName,
-        saa,
-        SatTimes,
-        step,
-        doPlot,
-        dirName,
-        obspar.datasetDir,
-        obspar.SAAThreshold,
-    )
-
-    i = 0
-    current_time = ObservationTime0
-    start_time = ObservationTime0
-    AvailablePixPerTime = []
-    TestTime = []
-    RadecsVsTimes = []
-    matching_tables = []
-    ProbaTime = []
-    while current_time <= start_time + datetime.timedelta(minutes=duration):
-        # Need to get a list of highest pixels
-        SatelliteTime = GetSatelliteTime(SatelliteName, current_time)
-        satellitePosition, satelliteLocation = GetSatellitePositions(
-            SatelliteName, SatelliteTime
-        )
-        ObsBool, yprob, pixlistRROcc = OccultationCut(
-            prob,
-            reducedNside,
-            current_time,
-            obspar,
-            satellitePosition,
-            satelliteLocation,
-        )
-
-        # Let's get the list of pixels available at each iteration
-        firstvalue1 = first_values1
-
-        matching_rows1 = FindMatchingCoords(1, firstvalue1, pixlistRROcc, reducedNside)
-        matching_tables.append(matching_rows1)
-
-        radectime = co.SkyCoord(
-            ra=matching_rows1["PIXRA"] * u.deg, dec=matching_rows1["PIXDEC"] * u.deg
-        )
-        theta = np.radians(90.0 - matching_rows1["PIXDEC"])
-        phi = np.radians(matching_rows1["PIXRA"])  # phi = longitude
-        pix_idx = hp.ang2pix(reducedNside, theta, phi, nest=False)
-
-        pix_proba = matching_rows1["PIXFOVPROB"]
-
-        RadecsVsTimes.append(radectime)
-        AvailablePixPerTime.append(pix_idx)
-        TestTime.append(current_time)
-        ProbaTime.append(pix_proba)
-
-        # List of all cculted pixels
-        Occultedpixels.append(pixlistRROcc)
-        current_time += step
-        i += 1
-
-    # WE CAN GET THE LIST OF PIXELS AVAILABLE AT ALL TIMES --> here we are getting them for all the 90% region... we can only get then for furst value if we want
-    Occultedpixels = [item for sublist in Occultedpixels for item in sublist]
-    OldPix = ipix
-    searchpix = np.isin(OldPix, Occultedpixels, invert=True)
-    newpix = OldPix[searchpix]
-
-    # CONVERTING newpix to angles on the coordinate grid
-    pixradec = TransformPixToRaDec(newpix, reducedNside)
-
-    # Finding the common radec betweem visible pixels and the grid
-    first_values_coords = co.SkyCoord(
-        ra=first_values1["PIXRA"], dec=first_values1["PIXDEC"], unit="deg"
-    )
-
-    matching_rows = []
-    for coord in pixradec:
-        sep = first_values_coords.separation(coord)
-        matches = np.where(sep < 1e-2 * u.deg)[0]  # adjust tolerance as needed
-
-        matching_rows.extend(first_values1[matches])
-
-    if matching_rows:
-        first_values = Table(rows=matching_rows, names=first_values1.colnames)
-    else:
-        print("No coordinates matched within the tolerance.")
-        first_values = Table(names=first_values1.colnames)
-
-    # FOR TARGETED HERE TRY TO FIND OUT WHICH GALAXIES ARE IN THE VISIBLE PART. Then choose the highest 10 betwee nthem
-
-    ObsName = [obspar.obs_name for j in range(len(first_values))]
-    RAarray = [row["PIXRA"] for row in first_values]
-    DECarray = [row["PIXDEC"] for row in first_values]
-    P_Galarray = [row["PIXFOVPROB"] for row in first_values]
-
-    SuggestedPointings = Table(
-        [ObsName, RAarray, DECarray, P_Galarray],
-        names=["ObsName", "RA[deg]", "DEC[deg]", "PGal"],
-    )
-
-    result = {
-        "SatTimes": SatTimes,  # Time checked concerning sat in SAA
-        "saa": saa,  # Boolean array indicating if sat is in SAA at each time step
-        "first_values1": first_values1,  # Grid of the 90% region without occultation constraints (all)
-        "first_values": first_values,  # Grid of the 90% region that is never occulted
-        "TestTime": TestTime,  # Times at which the satellite position was checked
-        "AvailablePixPerTime": AvailablePixPerTime,  # List of available pixels at each time step
-        "ProbaTime": ProbaTime,  # List of probabilities corresponding to the available pixels at each time step
-    }
-
-    return SuggestedPointings, result
-
-
 def PGWinFoV_NObs(
     skymap, nameEvent, ObservationTime0, PointingFile, obsparameters, dirName
 ):
@@ -1339,6 +904,7 @@ def PGWinFoV_NObs(
     Fov_obs = []
     #################################################################################################################################################
     obspar = obsparameters[0]
+    obslog = ObservationLog(obspar)
 
     # Retrieve maps
     prob = skymap.getMap("prob", obspar.reducedNside)
@@ -1559,7 +1125,9 @@ def PGWinFoV_NObs(
     )
     print("The total probability PGW: ", np.sum(P_GWarray))
 
-    return SuggestedPointings, obsparameters
+    obslog.suggestedPointings = SuggestedPointings
+
+    return SuggestedPointings
 
 
 def PGalinFoV_NObs(
@@ -1588,6 +1156,7 @@ def PGalinFoV_NObs(
     Fov_obs = []
     #################################################################################################################################################
     obspar = obsparameters[0]
+    obslog = ObservationLog(obspar)
 
     nside = obspar.HRnside
     prob = skymap.getMap("prob", obspar.HRnside)
@@ -2096,13 +1665,460 @@ def PGalinFoV_NObs(
     )
     print("The total probability PGal: ", np.sum(P_GALarray))
     print("The total probability PGW: ", np.sum(P_GWarray))
-    return SuggestedPointings, tGals0, obsparameters
+    obslog.suggestedPointings = SuggestedPointings
+    obslog.filteredGalaxies = tGals0
+
+    return obslog
+
+
+def PGWinFoV_Space_NObs(
+    skymap, nameEvent, ObservationTime0, PointingFile, obsparameters, dirName
+):
+    """
+    Compute an observation schedule for space-based observatories using a 3D method.
+
+    It calculates optimal observation times considering the galaxy catalog, GW probability map, and satellite constraints.
+    The function returns suggested pointings along with satellite visibility times and SAA status.
+    """
+
+    random.seed()
+    RAarray = []
+    DECarray = []
+    pixlist = []
+    pixlistHR = []
+    P_GWarray = []
+    ObsName = []
+    Occultedpixels = []
+
+    obspar = obsparameters[0]
+    obslog = ObservationLog(obspar)
+
+    radius = obspar.FOV
+    HRnside, reducedNside = GetBestNSIDE(obspar.reducedNside, obspar.HRnside, radius)
+    #################################################################################################################################################
+
+    # Retrieve maps
+    prob = skymap.getMap("prob", reducedNside)
+    highres = skymap.getMap("prob", HRnside)
+
+    # Create table for 2D probability at 90% containment
+    rapix, decpix, areapix = Get90RegionPixReduced(
+        prob, obspar.percentageMOC, reducedNside
+    )
+    radecs = co.SkyCoord(rapix, decpix, frame="icrs", unit=(u.deg, u.deg))
+    maxRuns = obspar.maxRuns
+
+    doPlot = obspar.doPlot
+
+    # Add observed pixels to pixlist
+    if PointingFile is not None:
+        print(PointingFile, prob, obspar.reducedNside, obspar.FOV, pixlist)
+        pixlist, pixlistHR, sumPGW, doneObs = SubstractPointings2D(
+            PointingFile, prob, obspar, pixlist, pixlistHR
+        )
+
+        if obspar.countPrevious:
+            maxRuns = obspar.maxRuns - doneObs
+        print(
+            "==========================================================================================="
+        )
+        print()
+        print(f"Total GW probability already covered: {sumPGW}")
+        print(
+            f"Count Previous = {obspar.countPrevious}, Number of pointings already done: {doneObs}, "
+            f"Max Runs was {obspar.maxRuns}, now is {maxRuns}"
+        )
+        print(
+            "==========================================================================================="
+        )
+
+    ipix = TransformRADecToPix(radecs, reducedNside)
+    newpix = ipix
+
+    first_values1 = GetBestGridPos2D(
+        prob,
+        highres,
+        HRnside,
+        reducedNside,
+        newpix,
+        radius,
+        maxRuns,
+        Occultedpixels,
+        doPlot,
+        dirName,
+        obspar.numberSides,
+        pixlistHR,
+        obspar.minProbcut,
+    )
+
+    # FOR SPACE ########################################################
+    # Computing the satellite name
+    SatelliteName = GetSatelliteName(obspar.obs_name, obspar.stationsurl)
+
+    saa = np.empty(obspar.maxRuns + 1, dtype=bool)
+    SatTimes = np.empty(obspar.maxRuns + 1, dtype=bool)
+
+    # Iterate through time steps within the specified duration -> to be modified
+    current_time = ObservationTime0
+    start_time = ObservationTime0
+    step = int(obspar.duration / obspar.maxRuns)
+    step = datetime.timedelta(minutes=step)
+
+    duration = obspar.duration
+
+    SatTimes, saa = SAA_Times(
+        duration,
+        start_time,
+        current_time,
+        SatelliteName,
+        saa,
+        SatTimes,
+        step,
+        doPlot,
+        dirName,
+        obspar.datasetDir,
+        obspar.SAAThreshold,
+    )
+
+    i = 0
+    current_time = ObservationTime0
+    start_time = ObservationTime0
+    AvailablePixPerTime = []
+    TestTime = []
+    RadecsVsTimes = []
+    matching_tables = []
+    ProbaTime = []
+    while current_time <= start_time + datetime.timedelta(minutes=duration):
+        # Need to get a list of highest pixels
+        SatelliteTime = GetSatelliteTime(SatelliteName, current_time)
+        satellitePosition, satelliteLocation = GetSatellitePositions(
+            SatelliteName, SatelliteTime
+        )
+        ObsBool, yprob, pixlistRROcc = OccultationCut(
+            prob,
+            reducedNside,
+            current_time,
+            obspar,
+            satellitePosition,
+            satelliteLocation,
+        )
+
+        # Let's get the list of pixels available at each iteration
+        firstvalue1 = first_values1
+
+        matching_rows1 = FindMatchingCoords(1, firstvalue1, pixlistRROcc, reducedNside)
+        matching_tables.append(matching_rows1)
+
+        radectime = co.SkyCoord(
+            ra=matching_rows1["PIXRA"] * u.deg, dec=matching_rows1["PIXDEC"] * u.deg
+        )
+        pix_idx = TransformRADecToPix(radectime, reducedNside)
+        pix_proba = matching_rows1["PIXFOVPROB"]
+
+        RadecsVsTimes.append(radectime)
+        AvailablePixPerTime.append(pix_idx)
+        TestTime.append(current_time)
+        ProbaTime.append(pix_proba)
+
+        # List of all cculted pixels
+        Occultedpixels.append(pixlistRROcc)
+        current_time += step
+        i += 1
+
+    # WE CAN GET THE LIST OF PIXELS AVAILABLE AT ALL TIMES
+    Occultedpixels = [item for sublist in Occultedpixels for item in sublist]
+    OldPix = ipix
+    searchpix = np.isin(OldPix, Occultedpixels, invert=True)
+    newpix = OldPix[searchpix]
+
+    # Find common pixels
+    first_values = FindMatchingPixList(newpix, first_values1)
+
+    ObsName = [obspar.obs_name for j in range(len(first_values))]
+    RAarray = [row["PIXRA"] for row in first_values]
+    DECarray = [row["PIXDEC"] for row in first_values]
+    P_GWarray = [row["PIXFOVPROB"] for row in first_values]
+
+    SuggestedPointings = Table(
+        [ObsName, RAarray, DECarray, P_GWarray],
+        names=["ObsName", "RA[deg]", "DEC[deg]", "PGW"],
+    )
+
+    EvolutionGrid = {
+        "ObsTimes": SatTimes,
+        "saa": saa,
+        "OptimalPos": first_values1,
+        "OptimalPosAfterCut": first_values,
+        "TestedTimes": TestTime,
+        "AvailablePixPerTime": AvailablePixPerTime,
+        "PixFoVProb": ProbaTime,
+    }
+    obslog.suggestedPointings = SuggestedPointings
+    obslog.observationGrid = EvolutionGrid
+
+    return obslog
+
+
+def PGalinFoV_Space_NObs(
+    skymap, nameEvent, ObservationTime0, PointingFile, galFile, obsparameters, dirName
+):
+    """
+    Compute an observation schedule for space-based observatories using a 3D method.
+
+    Called by :func:`tilepy.include.observationschedule.GetSchedule`, this function generates a schedule of pointings for each observatory,
+    considering the field of view (FoV), galaxy catalog, and satellite position with occultation constraints.
+
+    Parameters
+    ----------
+    skymap : SkyMap
+        The object storing sky maps.
+    nameEvent : str
+        The name of the event.
+    ObservationTime0 : datetime
+        The desired start time for scheduling to begin.
+    PointingFile : str, optional
+        Path to the text file containing the pointings that have already been performed.
+    galFile : str
+        Path to the galaxy catalog file.
+    obsparameters : list of ObservationParameters
+        A list of sets of parameters for each observatory needed to launch the tiling scheduler.
+    dirName : str
+        Path to the output directory where the schedules and plots will be saved.
+
+    Returns
+    -------
+    SuggestedPointings : astropy.table.Table
+        Table of suggested pointings with their RA, DEC, and galaxy probability.
+    SatTimes : numpy.ndarray
+        Array of satellite observation times.
+    saa : numpy.ndarray
+        Array indicating the satellite's South Atlantic Anomaly (SAA) status at each time step.
+
+    """
+
+    random.seed()
+    RAarray = []
+    DECarray = []
+    pixlist = []
+    pixlistHR = []
+    ObsName = []
+    Occultedpixels = []
+
+    obspar = obsparameters[0]
+    radius = obspar.FOV
+    HRnside, reducedNside = GetBestNSIDE(obspar.reducedNside, obspar.HRnside, radius)
+    #################################################################################################################################################
+
+    # Retrieve maps
+    prob = skymap.getMap("prob", reducedNside)
+
+    # Create table for 2D probability at 90% containment
+    rapix, decpix, areapix = Get90RegionPixReduced(
+        prob, obspar.percentageMOC, reducedNside
+    )
+    radecs = co.SkyCoord(rapix, decpix, frame="icrs", unit=(u.deg, u.deg))
+    maxRuns = obspar.maxRuns
+
+    doPlot = obspar.doPlot
+
+    # load galaxy catalogue
+    if not obspar.mangrove:
+        cat = LoadGalaxies(galFile)
+    else:
+        cat = LoadGalaxies_SteMgal(galFile)
+
+    # correlate GW map with galaxy catalog, retrieve ordered list
+    if not obspar.mangrove:
+        cat = skymap.computeGalaxyProbability(cat)
+        tGals0 = FilterGalaxies(cat, obspar.minimumProbCutForCatalogue)
+        sum_dP_dV = cat["dp_dV"].sum()
+    else:
+        cat = skymap.computeGalaxyProbability(cat)
+        tGals0 = FilterGalaxies(cat, obspar.minimumProbCutForCatalogue)
+        tGals0 = MangroveGalaxiesProbabilities(tGals0)
+        sum_dP_dV = cat["dp_dV"].sum()
+
+    # Add observed pixels to pixlist
+    if PointingFile is not None:
+        print(PointingFile, prob, reducedNside, radius, pixlist)
+        pixlist, pixlistHR, sumPGW, doneObs = SubstractPointings2D(
+            PointingFile, prob, obspar, pixlist, pixlistHR
+        )
+
+        if obspar.countPrevious:
+            maxRuns = obspar.maxRuns - doneObs
+        print(
+            "==========================================================================================="
+        )
+        print()
+        print(f"Total GW probability already covered: {sumPGW}")
+        print(
+            f"Count Previous = {obspar.countPrevious}, Number of pointings already done: {doneObs}, "
+            f"Max Runs was {obspar.maxRuns}, now is {maxRuns}"
+        )
+        print(
+            "==========================================================================================="
+        )
+
+    ipix = TransformRADecToPix(radecs, reducedNside)
+    newpix = ipix
+    pixradec = radecs
+
+    first_values1 = GetBestGridPos3D(
+        prob,
+        tGals0,
+        pixradec,
+        newpix,
+        radius,
+        sum_dP_dV,
+        HRnside,
+        obspar.numberSides,
+        maxRuns,
+        doPlot,
+        dirName,
+        reducedNside,
+        Occultedpixels,
+        obspar.minProbcut,
+    )
+
+    # FOR SPACE ######################################################
+    # Computing the satellite name
+    SatelliteName = GetSatelliteName(obspar.obs_name, obspar.stationsurl)
+
+    saa = np.empty(obspar.maxRuns + 1, dtype=bool)
+    SatTimes = np.empty(obspar.maxRuns + 1, dtype=bool)
+
+    # Iterate through time steps within the specified duration
+    current_time = ObservationTime0
+    start_time = ObservationTime0
+    step = int(obspar.duration / obspar.maxRuns)
+    step = datetime.timedelta(minutes=step)
+
+    duration = obspar.duration
+
+    SatTimes, saa = SAA_Times(
+        duration,
+        start_time,
+        current_time,
+        SatelliteName,
+        saa,
+        SatTimes,
+        step,
+        doPlot,
+        dirName,
+        obspar.datasetDir,
+        obspar.SAAThreshold,
+    )
+
+    i = 0
+    current_time = ObservationTime0
+    start_time = ObservationTime0
+    AvailablePixPerTime = []
+    TestTime = []
+    RadecsVsTimes = []
+    matching_tables = []
+    ProbaTime = []
+    while current_time <= start_time + datetime.timedelta(minutes=duration):
+        # Need to get a list of highest pixels
+        SatelliteTime = GetSatelliteTime(SatelliteName, current_time)
+        satellitePosition, satelliteLocation = GetSatellitePositions(
+            SatelliteName, SatelliteTime
+        )
+        ObsBool, yprob, pixlistRROcc = OccultationCut(
+            prob,
+            reducedNside,
+            current_time,
+            obspar,
+            satellitePosition,
+            satelliteLocation,
+        )
+
+        # Let's get the list of pixels available at each iteration
+        firstvalue1 = first_values1
+
+        matching_rows1 = FindMatchingCoords(1, firstvalue1, pixlistRROcc, reducedNside)
+        matching_tables.append(matching_rows1)
+
+        radectime = co.SkyCoord(
+            ra=matching_rows1["PIXRA"] * u.deg, dec=matching_rows1["PIXDEC"] * u.deg
+        )
+        theta = np.radians(90.0 - matching_rows1["PIXDEC"])
+        phi = np.radians(matching_rows1["PIXRA"])  # phi = longitude
+        pix_idx = hp.ang2pix(reducedNside, theta, phi, nest=False)
+
+        pix_proba = matching_rows1["PIXFOVPROB"]
+
+        RadecsVsTimes.append(radectime)
+        AvailablePixPerTime.append(pix_idx)
+        TestTime.append(current_time)
+        ProbaTime.append(pix_proba)
+
+        # List of all cculted pixels
+        Occultedpixels.append(pixlistRROcc)
+        current_time += step
+        i += 1
+
+    # WE CAN GET THE LIST OF PIXELS AVAILABLE AT ALL TIMES --> here we are getting them for all the 90% region... we can only get then for furst value if we want
+    Occultedpixels = [item for sublist in Occultedpixels for item in sublist]
+    OldPix = ipix
+    searchpix = np.isin(OldPix, Occultedpixels, invert=True)
+    newpix = OldPix[searchpix]
+
+    # CONVERTING newpix to angles on the coordinate grid
+    pixradec = TransformPixToRaDec(newpix, reducedNside)
+
+    # Finding the common radec betweem visible pixels and the grid
+    first_values_coords = co.SkyCoord(
+        ra=first_values1["PIXRA"], dec=first_values1["PIXDEC"], unit="deg"
+    )
+
+    matching_rows = []
+    for coord in pixradec:
+        sep = first_values_coords.separation(coord)
+        matches = np.where(sep < 1e-2 * u.deg)[0]  # adjust tolerance as needed
+
+        matching_rows.extend(first_values1[matches])
+
+    if matching_rows:
+        first_values = Table(rows=matching_rows, names=first_values1.colnames)
+    else:
+        print("No coordinates matched within the tolerance.")
+        first_values = Table(names=first_values1.colnames)
+
+    # FOR TARGETED HERE TRY TO FIND OUT WHICH GALAXIES ARE IN THE VISIBLE PART. Then choose the highest 10 betwee nthem
+
+    ObsName = [obspar.obs_name for j in range(len(first_values))]
+    RAarray = [row["PIXRA"] for row in first_values]
+    DECarray = [row["PIXDEC"] for row in first_values]
+    P_Galarray = [row["PIXFOVPROB"] for row in first_values]
+
+    SuggestedPointings = Table(
+        [ObsName, RAarray, DECarray, P_Galarray],
+        names=["ObsName", "RA[deg]", "DEC[deg]", "PGal"],
+    )
+
+    EvolutionGrid = {
+        "ObsTimes": SatTimes,  # Time checked concerning sat in SAA
+        "saa": saa,  # Boolean array indicating if sat is in SAA at each time step
+        "OptimalPos": first_values1,  # Grid of the 90% region without occultation constraints (all)
+        "OptimalPosAfterCut": first_values,  # Grid of the 90% region that is never occulted
+        "TestedTimes": TestTime,  # Times at which the satellite position was checked
+        "AvailablePixPerTime": AvailablePixPerTime,  # List of available pixels at each time step
+        "PixFoVProb": ProbaTime,  # List of probabilities corresponding to the available pixels at each time step
+    }
+
+    obslog.suggestedPointings = SuggestedPointings
+    obslog.observationGrid = EvolutionGrid
+
+    return obslog
 
 
 def GetBestTiles2D(skymap, nameEvent, PointingFile, obsparameters, dirName):
     """
     Compute the best observation tiles based on a 2D method, considering galaxy probabilities and observatory constraints.
     """
+    obspar = obsparameters[0]
+    obslog = ObservationLog(obspar)
 
     random.seed()
     RAarray = []
@@ -2110,7 +2126,6 @@ def GetBestTiles2D(skymap, nameEvent, PointingFile, obsparameters, dirName):
     P_GWarray = []
     Occultedpixels = []
     pixlistHR = []
-    obspar = obsparameters[0]
 
     radius = obspar.FOV
     HRnside, reducedNside = GetBestNSIDE(obspar.reducedNside, obspar.HRnside, radius)
@@ -2180,14 +2195,18 @@ def GetBestTiles2D(skymap, nameEvent, PointingFile, obsparameters, dirName):
     SuggestedPointings = Table(
         [RAarray, DECarray, P_GWarray], names=["RA[deg]", "DEC[deg]", "PGW"]
     )
+    obslog.suggestedPointings = SuggestedPointings
 
-    return SuggestedPointings
+    return obslog
 
 
 def GetBestTiles3D(skymap, nameEvent, PointingFile, galFile, obsparameters, dirName):
     """
     Compute the best observation tiles based on a 3D method for space-based observatories, considering galaxy probabilities and satellite constraints.
     """
+
+    obspar = obsparameters[0]
+    obslog = ObservationLog(obspar)
 
     random.seed()
     RAarray = []
@@ -2197,7 +2216,6 @@ def GetBestTiles3D(skymap, nameEvent, PointingFile, galFile, obsparameters, dirN
     ObsName = []
     Occultedpixels = []
 
-    obspar = obsparameters[0]
     radius = obspar.FOV
     HRnside, reducedNside = GetBestNSIDE(obspar.reducedNside, obspar.HRnside, radius)
 
@@ -2284,4 +2302,5 @@ def GetBestTiles3D(skymap, nameEvent, PointingFile, galFile, obsparameters, dirN
         [ObsName, RAarray, DECarray, P_Galarray],
         names=["ObsName", "RA[deg]", "DEC[deg]", "PGal"],
     )
-    return SuggestedPointings
+    obslog.suggestedPointings = SuggestedPointings
+    return obslog
