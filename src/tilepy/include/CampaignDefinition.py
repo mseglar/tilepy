@@ -439,7 +439,6 @@ class ResultsCollector:
         from copy import deepcopy
 
         self.obspar = deepcopy(obspar)  # Deep copy of obspar, mutable
-
         self.suggestedPointings = None  # always reserved (astropy.table.Table expected)
         self.observationGrid = None
 
@@ -480,13 +479,11 @@ class ResultsCollector:
 
     def info(self):
         print("=== ObservationParameters ===")
-        for k, v in self.ObservationParameters.__dict__.items():
+        for k, v in self.observationParameters.__dict__.items():
             print(f"{k}: {v}")
         print("\n=== SuggestedPointings ===")
-        print("Set" if self.SuggestedPointings is not None else "None")
+        print("Set" if self.suggestedPointings is not None else "None")
         print("\n=== SatObservationGrid ===")
         print(
-            f"{list(self.SatObservationGrid.keys())}"
-            if self.SatObservationGrid
-            else "None"
+            f"{list(self.observationGrid.keys())}" if self.observationGrid else "None"
         )
