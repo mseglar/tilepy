@@ -127,8 +127,6 @@ def PGWinFoV(skymap, nameEvent, obspar, dirName):
     PointingFile = obspar.pointingsFile
     # Main parameters
 
-    print(obspar)
-
     random.seed()
 
     RAarray = []
@@ -411,7 +409,8 @@ def PGalinFoV(skymap, nameEvent, galFile, obspar, dirName):
         print(
             "==========================================================================================="
         )
-    ##########################
+
+    obslog.obspar.maxRuns = maxRuns
 
     tGals_aux = tGals
     tGals_aux2 = tGals
@@ -916,6 +915,7 @@ def PGWinFoV_NObs(
     )
     radecs = co.SkyCoord(rapix, decpix, frame="icrs", unit=(u.deg, u.deg))
     maxRuns = obspar.maxRuns
+
     # Add observed pixels to pixlist
     if PointingFile is not None:
         print(PointingFile, prob, obspar.reducedNside, obspar.FOV, pixlist)
@@ -937,7 +937,9 @@ def PGWinFoV_NObs(
         print(
             "==========================================================================================="
         )
-    #################################################################################################################################################
+    obslog.obspar.maxRuns = maxRuns
+
+    # Setup for the main loop over the observatories
     ITERATION_OBS = 0
     TIME_MIN_ALL = []
     TIME_MIN = obs_time + datetime.timedelta(hours=12)
@@ -945,11 +947,13 @@ def PGWinFoV_NObs(
         TIME_MIN = utc.localize(TIME_MIN)
     NewActiveObsTime = NewActiveObsStart
     NUMBER_OBS = np.zeros(len(NewActiveObs))
-    #################################################################################################################################################
+
     counter = 0
     i = 0
     couter_per_obs = np.zeros(len(NewActiveObs))
+
     print("------NewActiveObsTime--------", NewActiveObs[0].obs_name)
+
     while (i < 500) & any(SameNight):
         for j, obs in enumerate(NewActiveObs):
             obspar = NewActiveObs[j]
@@ -1066,13 +1070,10 @@ def PGWinFoV_NObs(
                         Duration.append(obspar.duration)
                         Fov_obs.append(obspar.FOV)
 
-                # HERE WE DETERMINE THE OBSERVATION DURATION ... FOR NOW WE USE 30 MINS FOR ALL
+                # here the time is updated for the next observation using duration
                 NewActiveObsTime[j] = NewActiveObsTime[j] + datetime.timedelta(
                     minutes=obspar.duration
                 )
-
-                # HERE WE DETERMINE IF WE ARE STILL IN THE SAME NIGHT FOR THIS OBSERVATORY
-                # if (NewActiveObsTime[j] > Tools.NextSunrise(obsstart, obspar)) | (obsstart > Tools.NextMoonrise(obsstart, obspar)):
 
                 if obspar.base == "space":
                     if NewActiveObsTime[j] > obs_time + datetime.timedelta(hours=24):
@@ -1140,8 +1141,7 @@ def PGalinFoV_NObs(
     obs_time, SameNight, NewActiveObs, NewActiveObsStart = ObservationStartperObs(
         obsparameters, ObservationTime0
     )
-    # START
-    #################################################################################################################################################
+
     random.seed()
     P_GALarray = []
     P_GWarray = []
@@ -1154,7 +1154,7 @@ def PGalinFoV_NObs(
     ObsName = []
     Duration = []
     Fov_obs = []
-    #################################################################################################################################################
+
     obspar = obsparameters[0]
     obslog = ObservationLog(obspar)
 
@@ -1217,9 +1217,13 @@ def PGalinFoV_NObs(
             "==========================================================================================="
         )
 
+    obslog.obspar.maxRuns = maxRuns
+
+    # Auxiliary copies of the galaxy table for the two rounds
     tGals_aux = tGals
     tGals_aux2 = tGals
-    #################################################################################################################################################
+
+    # Setup for the observation loop
     ITERATION_OBS = 0
     TIME_MIN_ALL = []
     TIME_MIN = obs_time + datetime.timedelta(hours=12)
@@ -1227,7 +1231,6 @@ def PGalinFoV_NObs(
         TIME_MIN = utc.localize(TIME_MIN)
     NewActiveObsTime = NewActiveObsStart
     NUMBER_OBS = np.zeros(len(NewActiveObs))
-    #################################################################################################################################################
 
     counter = 0
     i = 0
@@ -1611,13 +1614,11 @@ def PGalinFoV_NObs(
                                 f"Condition NOT met at {ObservationTime}: dp/dV = {finalGals['dp_dV'][0]} is greater than {obspar.minProbcut}"
                             )
 
-                # HERE WE DETERMINE THE OBSERVATION DURATION ... FOR NOW WE USE 30 MINS FOR ALL
+                # here the time is updated for the next observation using duration
                 NewActiveObsTime[j] = NewActiveObsTime[j] + datetime.timedelta(
                     minutes=obspar.duration
                 )
 
-                # HERE WE DETERMINE IF WE ARE STILL IN THE SAME NIGHT FOR THIS OBSERVATORY
-                # if (NewActiveObsTime[j] > Tools.NextSunrise(NewActiveObsStart[j], NewActiveObs[j])) | (NewActiveObsStart[j] > Tools.NextMoonrise(obs_time, NewActiveObs[j])):
                 if not obsparameters[j].useGreytime:
                     if not Tools.CheckWindow(NewActiveObsTime[j], obspar):
                         SameNight[j] = False
@@ -1665,6 +1666,7 @@ def PGalinFoV_NObs(
     )
     print("The total probability PGal: ", np.sum(P_GALarray))
     print("The total probability PGW: ", np.sum(P_GWarray))
+
     obslog.suggestedPointings = SuggestedPointings
     obslog.filteredGalaxies = tGals0
 
@@ -1695,7 +1697,6 @@ def PGWinFoV_Space_NObs(
 
     radius = obspar.FOV
     HRnside, reducedNside = GetBestNSIDE(obspar.reducedNside, obspar.HRnside, radius)
-    #################################################################################################################################################
 
     # Retrieve maps
     prob = skymap.getMap("prob", reducedNside)
@@ -2143,7 +2144,6 @@ def GetBestTiles2D(skymap, nameEvent, PointingFile, obsparameters, dirName):
 
     # Add observed pixels to pixlist
     if PointingFile is not None:
-
         # FIXME: pixlist is undefined in this scope
         # The program will crash is the if branch is executed
         print(
@@ -2167,6 +2167,7 @@ def GetBestTiles2D(skymap, nameEvent, PointingFile, obsparameters, dirName):
         print(
             "==========================================================================================="
         )
+    obslog.obspar.maxRuns = maxRuns
 
     ipix = TransformRADecToPix(radecs, reducedNside)
     newpix = ipix
@@ -2269,6 +2270,7 @@ def GetBestTiles3D(skymap, nameEvent, PointingFile, galFile, obsparameters, dirN
             f"Max Runs was {obspar.maxRuns}, now is {maxRuns}"
         )
         print("========")
+    obslog.obspar.maxRuns = maxRuns
 
     ipix = TransformRADecToPix(radecs, reducedNside)
     newpix = ipix
