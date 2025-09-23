@@ -425,7 +425,7 @@ class ObservationParameters(object):
         self.mangrove = mangrove
 
 
-class ResultsCollector:
+class ObservationLog(object):
     """
     Collects results generated during the observation planning workflow.
 
@@ -441,6 +441,7 @@ class ResultsCollector:
         self.obspar = deepcopy(obspar)  # Deep copy of obspar, mutable
         self.suggestedPointings = None  # always reserved (astropy.table.Table expected)
         self.observationGrid = None
+        self.filteredGalaxies = None  # optional (astropy.table.Table expected)
 
     # ----- Fixed interface -----
 

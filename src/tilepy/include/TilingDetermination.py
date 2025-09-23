@@ -30,6 +30,7 @@ import six
 from astropy import units as u
 from astropy.table import Table
 from six.moves import configparser
+from .CampaignDefinition import ObservationLog
 from .MaskingTools import (
     ZenithAngleCut,
     VisibleAtTime,
@@ -118,6 +119,7 @@ def PGWinFoV(skymap, nameEvent, obspar, dirName):
 
     """
 
+    obslog = ObservationLog(obspar)
     ObservationTime0 = obspar.obsTime
     PointingFile = obspar.pointingsFile
     # Main parameters
@@ -173,6 +175,7 @@ def PGWinFoV(skymap, nameEvent, obspar, dirName):
         print(
             "==========================================================================================="
         )
+    obslog.obspar.maxRuns = maxRuns
 
     #######################################################
 
@@ -293,7 +296,9 @@ def PGWinFoV(skymap, nameEvent, obspar, dirName):
             "============================================================================================\n"
         )
         print(f"The total probability PGW: {np.sum(P_GWarray):.4f}")
-    return (SuggestedPointings, ObservationTime0)
+        obslog.suggestedPointings = SuggestedPointings
+
+    return obslog
 
 
 def PGalinFoV(skymap, nameEvent, galFile, obspar, dirName):
@@ -326,6 +331,7 @@ def PGalinFoV(skymap, nameEvent, galFile, obspar, dirName):
         Filtered and ranked list of galaxies for scheduling.
 
     """
+    obslog = ObservationLog(obspar)
 
     # The desired time for scheduling to start
     ObservationTime0 = obspar.obsTime
@@ -833,7 +839,11 @@ def PGalinFoV(skymap, nameEvent, galFile, obspar, dirName):
         )
         print(f"The total probability PGal: {np.sum(P_GALarray):.4f}")
         print(f"The total probability PGW: {np.sum(P_GWarray):.4f}")
-    return SuggestedPointings, tGals0
+
+    obslog.suggestedPointings = SuggestedPointings
+    obslog.filteredGalaxies = tGals0
+
+    return obslog
 
 
 def ObservationStartperObs(obsparameters, ObservationTime0):

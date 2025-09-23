@@ -134,14 +134,15 @@ def GetSchedule(obspar):
         )
         print()
 
-        SuggestedPointings, cat = PGalinFoV(
-            skymap, raw_map.name_event, galaxies, obspar, dirName
-        )
+        obslog = PGalinFoV(skymap, raw_map.name_event, galaxies, obspar, dirName)
 
-        if len(SuggestedPointings) != 0:
+        if len(obslog.suggestedPointings) != 0:
             outfilename = "%s/SuggestedPointings_GalProbOptimisation.txt" % dirName
             ascii.write(
-                SuggestedPointings, outfilename, overwrite=True, fast_writer=False
+                obslog.suggestedPointings,
+                outfilename,
+                overwrite=True,
+                fast_writer=False,
             )
             print()
             print(f"Resulting pointings file is {outfilename}")
@@ -149,7 +150,7 @@ def GetSchedule(obspar):
                 RankingTimes(
                     obspar,
                     skymap,
-                    cat,
+                    obslog.filteredGalaxies,
                     dirName,
                     "%s/SuggestedPointings_GalProbOptimisation.txt" % dirName,
                 )
@@ -161,7 +162,7 @@ def GetSchedule(obspar):
                     dirName,
                     "%s/SuggestedPointings_GalProbOptimisation.txt" % dirName,
                     obspar.obs_name,
-                    cat,
+                    obslog.filteredGalaxies,
                 )
         else:
             print("No observations are scheduled")
@@ -183,13 +184,16 @@ def GetSchedule(obspar):
         )
         print()
 
-        SuggestedPointings, t0 = PGWinFoV(skymap, raw_map.name_event, obspar, dirName)
+        obslog = PGWinFoV(skymap, raw_map.name_event, obspar, dirName)
 
-        if len(SuggestedPointings) != 0:
+        if len(obslog.suggestedPointings) != 0:
             gal = []
             outfilename = "%s/SuggestedPointings_2DProbOptimisation.txt" % dirName
             ascii.write(
-                SuggestedPointings, outfilename, overwrite=True, fast_writer=False
+                obslog.suggestedPointings,
+                outfilename,
+                overwrite=True,
+                fast_writer=False,
             )
             print()
             print(f"Resulting pointings file is {outfilename}")
