@@ -479,7 +479,7 @@ class ResultsCollector:
 
     def info(self):
         print("=== ObservationParameters ===")
-        for k, v in self.observationParameters.__dict__.items():
+        for k, v in self.obspar.__dict__.items():
             print(f"{k}: {v}")
         print("\n=== SuggestedPointings ===")
         print("Set" if self.suggestedPointings is not None else "None")
