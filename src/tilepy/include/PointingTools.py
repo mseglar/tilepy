@@ -46,6 +46,8 @@ from skyfield import almanac
 from skyfield.api import E, N, load, wgs84
 import pandas as pd
 
+utc = pytz.UTC
+
 if six.PY2:
     ConfigParser = configparser.SafeConfigParser
 else:
@@ -1139,6 +1141,111 @@ def NightDarkObservationwithGreyTime(time, obspar):
         max_moon_phase=obspar.moonPhase / 100.0,
     )
     return obs.get_time_window(start_time=time, nb_observation_night=obspar.maxNights)
+
+
+def ObservationStartperObs(obsparameters, ObservationTime0):
+    """
+    Compute the first observation time for each observatory involved in the scheduling.
+
+    This mid-level function is called by Nobs Tiling functions to determine the first available observation
+    time for each observatory and whether each observatory can observe on the same night.
+
+    Parameters
+    ----------
+    obsparameters : list of ObservationParameters
+        A list of sets of parameters for each observatory needed to launch the tiling scheduler.
+    ObservationTime0 : sr
+        The desired start time for scheduling to begin.
+
+    Returns
+    -------
+    obs_time : datetime
+        The current observation time, possibly adjusted.
+    SameNight : numpy.ndarray of bool
+        An array indicating whether each observatory is available for observation on the same night.
+    NewActiveObs : list of ObservationParameters
+        A list of observatories that are available to observe.
+    NewActiveObsStart : numpy.ndarray of datetime
+        A sorted list of the first available observation times for each observatory.
+
+    """
+
+    print("ObservationTime0", ObservationTime0)
+
+    print("obsparameters", len(obsparameters))
+    # Finding the start time for each observatory and checking if it's now
+    FirstDark = np.full(len(obsparameters), False, dtype=bool)
+    FirstDark_Flag = np.full(len(obsparameters), False, dtype=bool)
+    # print(len(ObsFirstTime))
+    obs_time = ObservationTime0
+    if obs_time.tzinfo is None:
+        obs_time = utc.localize(obs_time)
+    ObsFirstTime = []
+
+    j = 0
+    for obspar1 in obsparameters:
+        if obsparameters[j].base == "space":
+            dark_at_start = True
+            FirstDark[j] = dark_at_start
+
+        else:
+            dark_at_start = False
+
+            if obsparameters[j].useGreytime:
+                dark_at_start = Tools.CheckWindowGrey(obs_time, obsparameters[j])
+            if not obsparameters[j].useGreytime:
+                dark_at_start = Tools.CheckWindow(obs_time, obsparameters[j])
+            FirstDark[j] = dark_at_start
+
+        # THIS WILL CREATE A DATETIME OBJECT WITH IN THE FORM XX+00:00 WITH NO DOTS
+        if FirstDark[j]:
+            FirstDark_Flag[j] = True
+            if obs_time.tzinfo is None:
+                obs_time = utc.localize(obs_time)
+            ObsFirstTime.append(obs_time)
+        else:  # THIS WILL CREATE A DATETIME OBJECT WITH IN THE FORM .XX+00:00
+            if obsparameters[j].useGreytime:
+                ObsFirstTime1 = NextWindowTools.NextObservationWindowGrey(
+                    time=obs_time, obspar=obsparameters[j]
+                )
+                ObsFirstTime.append(ObsFirstTime1)
+            if not obsparameters[j].useGreytime:
+                ObsFirstTime1 = NextWindowTools.NextObservationWindow(
+                    time=obs_time, obspar=obsparameters[j]
+                )
+                ObsFirstTime.append(ObsFirstTime1)
+            if ObsFirstTime1:
+                if ObsFirstTime1.tzinfo is None:
+                    ObsFirstTime1 = utc.localize(ObsFirstTime1)
+                if obs_time.tzinfo is None:
+                    obs_time = utc.localize(obs_time)
+                if ObsFirstTime1 < obs_time + datetime.timedelta(hours=24):
+                    FirstDark_Flag[j] = True
+        j += 1
+
+    # Checking which observatories are availabe for observations and saving their start time
+    ActiveObsStart = []
+    ActiveObs = []
+    SameNight = np.full(len(obsparameters), False, dtype=bool)
+
+    j = 0
+    for obspar in obsparameters:
+        if FirstDark_Flag[j]:
+            if ObsFirstTime[j].tzinfo is None:
+                ObsFirstTime = utc.localize(ObsFirstTime[j])
+            ActiveObsStart.append(ObsFirstTime[j])
+            ActiveObs.append(obsparameters[j])
+            SameNight[j] = True
+        j += 1
+
+    # Sorting observatories according to their first obsevation time available
+    NewActiveObsStart = np.sort(ActiveObsStart)
+    NewActiveObs = ActiveObs
+    ind = np.argsort(ActiveObsStart)
+    ind = np.array(ind)
+    NewActiveObs = np.take(ActiveObs, ind)
+
+    return obs_time, SameNight, NewActiveObs, NewActiveObsStart
 
 
 def GetSatelliteName(satellitename, stationsurl):

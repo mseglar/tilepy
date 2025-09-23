@@ -48,6 +48,7 @@ from .PointingTools import (
     NextWindowTools,
     NightDarkObservation,
     NightDarkObservationwithGreyTime,
+    ObservationStartperObs,
     Observer,
     SubstractGalaxiesCircle,
     SubstractPointings,
@@ -73,7 +74,6 @@ from .RankingObservationTimes import (
     LoadPointingFile,
 )
 from .TilingDetermination import (
-    ObservationStartperObs,
     PGalinFoV,
     PGalinFoV_NObs,
     PGWinFoV,
@@ -106,6 +106,7 @@ __all__ = [
     "get_lvk_uniq_maps",
     "NightDarkObservation",
     "NightDarkObservationwithGreyTime",
+    "ObservationStartperObs",
     "ComputeProbability2D",
     "SubstractPointings2D",
     "TransformRADec",
@@ -142,7 +143,6 @@ __all__ = [
     "RankingTimes_2D",
     "PGWinFoV",
     "PGalinFoV",
-    "ObservationStartperObs",
     "PGWinFoV_NObs",
     "PGalinFoV_NObs",
     "set_gaussian_source",

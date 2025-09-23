@@ -86,8 +86,6 @@ def GetSchedule(obspar):
     area_50 = skymap.getArea(0.5).to_value(u.deg * u.deg)
 
     if obspar.locCut90 is not None:
-        # FIXME : a repetitive calculation
-        # area_90 = skymap.getArea(0.9).to_value(u.deg * u.deg)
         if obspar.locCut90 < area_90:
             print(
                 "The 90% area ("
@@ -98,11 +96,7 @@ def GetSchedule(obspar):
             )
             return
 
-    # FIXME : Not necessary but could ovoid to have along "==" in the code
-    # print("=" * 91)
-    print(
-        "==========================================================================================="
-    )
+    print("=" * 91)
 
     outputDir = "%s/%s" % (obspar.outDir, raw_map.name_event)
 
@@ -112,15 +106,10 @@ def GetSchedule(obspar):
     else:
         dirName = f"{outputDir}/PGinFoV"
 
-    if not os.path.exists(dirName):
-        os.makedirs(dirName)
-    # FIXME:
-    # os.makedirs(dirName, exist_ok=True)
+    os.makedirs(dirName, exist_ok=True)
 
     if skymap.is3D:
-        print(
-            "==========================================================================================="
-        )
+        print("=" * 91)
         print("Starting the 3D pointing calculation with the following parameters\n")
         print("Filename: ", raw_map.name_event)
         print("Date: ", obspar.obsTime)
@@ -129,9 +118,7 @@ def GetSchedule(obspar):
         print("Dataset: ", obspar.datasetDir)
         print("Output: ", outputDir)
         print(f"90% area = {area_90}. 50% area = {area_50}")
-        print(
-            "==========================================================================================="
-        )
+        print("=" * 91)
         print()
 
         obslog = PGalinFoV(skymap, raw_map.name_event, galaxies, obspar, dirName)
